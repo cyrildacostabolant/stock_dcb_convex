@@ -211,7 +211,7 @@ function App() {
         <div className="p-6 border-b border-gray-100">
           <h1 className="text-2xl font-bold text-gray-900 flex items-center gap-2">
             <PackageOpen className="text-blue-600" />
-            Stock Convex
+            Stock DCB
           </h1>
         </div>
         
