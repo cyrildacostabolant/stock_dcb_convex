@@ -171,18 +171,61 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
 
       setCameras(availableCameras);
 
-      // Prefer rear / back camera
+      // Déterminer la caméra à activer par défaut :
+      // 1. Si une caméra spécifique est demandée en paramètre
       let selectedId = cameraId;
+
+      // 2. Sinon, récupérer la dernière caméra validée par l'utilisateur
       if (!selectedId) {
-        const backCam = availableCameras.find(c => 
-          c.label.toLowerCase().includes('back') || 
-          c.label.toLowerCase().includes('arrière') ||
-          c.label.toLowerCase().includes('rear') ||
-          c.label.toLowerCase().includes('environment')
-        );
-        selectedId = backCam ? backCam.id : availableCameras[0].id;
+        try {
+          const savedCameraId = localStorage.getItem('preferred_scanner_camera_id');
+          if (savedCameraId && availableCameras.some(c => c.id === savedCameraId)) {
+            selectedId = savedCameraId;
+          }
+        } catch (e) {
+          // ignore
+        }
       }
+
+      // 3. Sinon, choisir intelligemment la caméra arrière principale
+      if (!selectedId) {
+        // Caméras explicitement identifiées comme arrière / back / environment
+        const backCams = availableCameras.filter(c => {
+          const l = (c.label || '').toLowerCase();
+          return l.includes('back') || l.includes('arrière') || l.includes('rear') || l.includes('environment');
+        });
+
+        // Éliminer l'ultra grand-angle / macro fixe si possible (souvent sans autofocus pour code-barres)
+        const mainBackCam = backCams.find(c => {
+          const l = (c.label || '').toLowerCase();
+          return !l.includes('ultra') && !l.includes('0.5') && !l.includes('wide-angle');
+        }) || backCams[0];
+
+        // Caméras qui ne sont pas étiquetées front/avant/selfie
+        const nonFrontCams = availableCameras.filter(c => {
+          const l = (c.label || '').toLowerCase();
+          return !l.includes('front') && !l.includes('avant') && !l.includes('selfie');
+        });
+
+        if (mainBackCam) {
+          selectedId = mainBackCam.id;
+        } else if (nonFrontCams.length > 0) {
+          selectedId = nonFrontCams[0].id;
+        } else if (availableCameras.length > 1) {
+          // Sur la grande majorité des smartphones Android (Camera2 API), l'index 0 est la caméra avant (selfie)
+          // et l'index 1 est la caméra arrière principale avec autofocus. C'est celle qui s'activait au clic sur "Caméra".
+          selectedId = availableCameras[1].id;
+        } else {
+          selectedId = availableCameras[0].id;
+        }
+      }
+
       setCurrentCameraId(selectedId);
+      try {
+        localStorage.setItem('preferred_scanner_camera_id', selectedId);
+      } catch (e) {
+        // ignore
+      }
 
       const html5QrCode = new Html5Qrcode(scannerContainerId, {
         formatsToSupport: [
@@ -223,6 +266,16 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
           // Silent frame callback
         }
       );
+
+      // Mettre à jour avec l'ID réel détecté de la caméra
+      try {
+        const activeTrack = getVideoTrack();
+        const activeDeviceId = activeTrack?.getSettings?.().deviceId;
+        if (activeDeviceId) {
+          setCurrentCameraId(activeDeviceId);
+          localStorage.setItem('preferred_scanner_camera_id', activeDeviceId);
+        }
+      } catch (e) {}
 
       setIsInitializing(false);
 
@@ -308,7 +361,11 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
     if (cameras.length <= 1) return;
     const currentIndex = cameras.findIndex(c => c.id === currentCameraId);
     const nextIndex = (currentIndex + 1) % cameras.length;
-    startScanner(cameras[nextIndex].id);
+    const targetCamera = cameras[nextIndex];
+    try {
+      localStorage.setItem('preferred_scanner_camera_id', targetCamera.id);
+    } catch (e) {}
+    startScanner(targetCamera.id);
   };
 
   const handleManualSubmit = (e: React.FormEvent) => {
@@ -520,7 +577,7 @@ export const BarcodeScannerModal: React.FC<BarcodeScannerModalProps> = ({
                   title="Basculer vers une autre caméra"
                 >
                   <Camera size={15} />
-                  <span>Caméra</span>
+                  <span>Caméra {cameras.findIndex(c => c.id === currentCameraId) >= 0 ? `(${cameras.findIndex(c => c.id === currentCameraId) + 1}/${cameras.length})` : ''}</span>
                 </button>
               )}
 
