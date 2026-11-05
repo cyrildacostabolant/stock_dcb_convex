@@ -4,9 +4,10 @@ import { useMutation } from "convex/react";
 // @ts-ignore
 import { api } from "../convex/_generated/api";
 import { Modal } from './Modal';
-import { Minus, Plus } from 'lucide-react';
+import { Minus, Plus, Barcode, Camera, X } from 'lucide-react';
 // @ts-ignore
 import { Id } from "../convex/_generated/dataModel";
+import { BarcodeScannerModal } from './BarcodeScannerModal';
 
 interface StockItemModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface StockItemModalProps {
   item: StockItem | null; 
   categories: Category[];
   currentCategoryName: string | null;
+  initialBarcode?: string | null;
 }
 
 export const StockItemModal: React.FC<StockItemModalProps> = ({ 
@@ -22,6 +24,7 @@ export const StockItemModal: React.FC<StockItemModalProps> = ({
   item, 
   categories,
   currentCategoryName,
+  initialBarcode,
 }) => {
   const createStock = useMutation(api.stocks.create);
   const updateStock = useMutation(api.stocks.update);
@@ -30,6 +33,8 @@ export const StockItemModal: React.FC<StockItemModalProps> = ({
   const [produit, setProduit] = useState('');
   const [quantite, setQuantite] = useState(1);
   const [categorieName, setCategorieName] = useState<string | null>(null);
+  const [codeBarre, setCodeBarre] = useState('');
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -38,13 +43,15 @@ export const StockItemModal: React.FC<StockItemModalProps> = ({
         setProduit(item.produit);
         setQuantite(item.quantite);
         setCategorieName(item.categorie);
+        setCodeBarre(item.code_barre || '');
       } else {
         setProduit('');
         setQuantite(1);
         setCategorieName(currentCategoryName);
+        setCodeBarre(initialBarcode || '');
       }
     }
-  }, [isOpen, item, currentCategoryName]);
+  }, [isOpen, item, currentCategoryName, initialBarcode]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,7 +62,8 @@ export const StockItemModal: React.FC<StockItemModalProps> = ({
       const payload = {
         produit: produit.trim(),
         quantite: Math.max(0, Math.floor(quantite)),
-        categorie: !categorieName ? "" : categorieName // Convex v.string doesn't like null unless specified
+        categorie: !categorieName ? "" : categorieName, // Convex v.string doesn't like null unless specified
+        code_barre: codeBarre.trim() ? codeBarre.trim() : undefined,
       };
 
       if (item && item._id) {
@@ -156,6 +164,43 @@ export const StockItemModal: React.FC<StockItemModalProps> = ({
           </select>
         </div>
 
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium text-gray-700 flex items-center gap-1.5">
+              <Barcode size={16} className="text-gray-500" />
+              <span>Code-barres</span>
+              <span className="text-xs font-normal text-gray-400">(optionnel)</span>
+            </label>
+            {codeBarre && (
+              <button
+                type="button"
+                onClick={() => setCodeBarre('')}
+                className="text-xs text-red-500 hover:text-red-700 flex items-center gap-1 font-medium transition-colors"
+              >
+                <X size={12} /> Dissocier
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={codeBarre}
+              onChange={(e) => setCodeBarre(e.target.value)}
+              placeholder="Ex: 3017620422003 ou scannez via caméra"
+              className="w-full p-3 font-mono text-sm bg-white border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
+            />
+            <button
+              type="button"
+              onClick={() => setIsScannerOpen(true)}
+              className="px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-semibold rounded-lg border border-blue-200 transition-all flex items-center gap-2 active:scale-95 shadow-sm shrink-0"
+              title="Scanner avec l'appareil photo"
+            >
+              <Camera size={18} />
+              <span className="text-sm font-semibold">Scanner</span>
+            </button>
+          </div>
+        </div>
+
         <div className="flex gap-3 pt-4 border-t">
           {item && (
             <button
@@ -183,6 +228,14 @@ export const StockItemModal: React.FC<StockItemModalProps> = ({
           </button>
         </div>
       </form>
+
+      <BarcodeScannerModal
+        isOpen={isScannerOpen}
+        onClose={() => setIsScannerOpen(false)}
+        onScan={(scanned) => setCodeBarre(scanned)}
+        title="Associer un code-barres"
+        description="Scannez le code-barres pour l'associer à cet article"
+      />
     </Modal>
   );
 };

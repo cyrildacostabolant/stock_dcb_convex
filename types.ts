@@ -11,6 +11,7 @@ export interface StockItem {
   produit: string;
   quantite: number;
   categorie: string | null;
+  code_barre?: string | null;
   _creationTime?: number;
 }
 

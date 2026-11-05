@@ -11,7 +11,12 @@ export const get = query({
 });
 
 export const create = mutation({
-  args: { produit: v.string(), quantite: v.number(), categorie: v.string() },
+  args: { 
+    produit: v.string(), 
+    quantite: v.number(), 
+    categorie: v.string(),
+    code_barre: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
     return await ctx.db.insert("stocks", args);
   },
@@ -22,7 +27,8 @@ export const insertMany = mutation({
     stocks: v.array(v.object({
       produit: v.string(),
       quantite: v.number(),
-      categorie: v.string()
+      categorie: v.string(),
+      code_barre: v.optional(v.string()),
     }))
   },
   handler: async (ctx, args) => {
@@ -40,9 +46,20 @@ export const updateQuantity = mutation({
 });
 
 export const update = mutation({
-  args: { id: v.id("stocks"), produit: v.string(), quantite: v.number(), categorie: v.string() },
+  args: { 
+    id: v.id("stocks"), 
+    produit: v.string(), 
+    quantite: v.number(), 
+    categorie: v.string(),
+    code_barre: v.optional(v.string()),
+  },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.id, { produit: args.produit, quantite: args.quantite, categorie: args.categorie });
+    await ctx.db.patch(args.id, { 
+      produit: args.produit, 
+      quantite: args.quantite, 
+      categorie: args.categorie,
+      code_barre: args.code_barre,
+    });
   },
 });
 

@@ -10,5 +10,6 @@ export default defineSchema({
     produit: v.string(),
     quantite: v.number(),
     categorie: v.string(),
+    code_barre: v.optional(v.string()),
   }),
 });

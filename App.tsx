@@ -17,11 +17,15 @@ import {
   Filter,
   RefreshCw,
   Download,
-  Upload
+  Upload,
+  Barcode,
+  AlertTriangle,
+  CheckCircle2
 } from 'lucide-react';
 import { DEFAULT_CATEGORY_COLOR } from './constants';
 // @ts-ignore
 import { Id } from "./convex/_generated/dataModel";
+import { BarcodeScannerModal } from './components/BarcodeScannerModal';
 
 function App() {
   // Convex Hooks
@@ -41,13 +45,24 @@ function App() {
   const [isStockModalOpen, setStockModalOpen] = useState(false);
   const [editingStock, setEditingStock] = useState<StockItem | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Barcode scanning & search states
+  const [isBarcodeSearchOpen, setIsBarcodeSearchOpen] = useState(false);
+  const [unregisteredBarcode, setUnregisteredBarcode] = useState<string | null>(null);
+  const [prefilledBarcode, setPrefilledBarcode] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<{ text: string; type: 'success' | 'info' } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleBackup = () => {
     const data = {
       categories: categories.map((c: Category) => ({ name: c.name, color: c.color })),
-      stocks: stocks.map((s: StockItem) => ({ produit: s.produit, quantite: s.quantite, categorie: s.categorie }))
+      stocks: stocks.map((s: StockItem) => ({ 
+        produit: s.produit, 
+        quantite: s.quantite, 
+        categorie: s.categorie,
+        code_barre: s.code_barre || undefined
+      }))
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -94,8 +109,9 @@ function App() {
            await insertManyStocks({ 
              stocks: data.stocks.map((s: any) => ({ 
                produit: s.produit, 
-               quantite: s.quantite, 
-               categorie: s.categorie 
+               quantite: Number(s.quantite) || 0, 
+               categorie: s.categorie || '',
+               code_barre: s.code_barre || undefined
              })) 
            });
         }
@@ -131,10 +147,13 @@ function App() {
       result = result.filter((s: StockItem) => s.categorie === selectedCategoryName);
     }
 
-    // Filter by search
+    // Filter by search (name or barcode)
     if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((s: StockItem) => s.produit.toLowerCase().includes(q));
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter((s: StockItem) => 
+        (s.produit && s.produit.toLowerCase().includes(q)) ||
+        (s.code_barre && s.code_barre.toLowerCase().includes(q))
+      );
     }
 
     // Tri par ordre alphabétique (insensible à la casse et aux accents)
@@ -149,12 +168,43 @@ function App() {
 
   const handleOpenCreateStock = () => {
     setEditingStock(null);
+    setPrefilledBarcode(null);
+    setStockModalOpen(true);
+  };
+
+  const handleCreateWithBarcode = (barcode: string) => {
+    setUnregisteredBarcode(null);
+    setEditingStock(null);
+    setPrefilledBarcode(barcode);
     setStockModalOpen(true);
   };
 
   const handleEditStock = (item: StockItem) => {
     setEditingStock(item);
+    setPrefilledBarcode(null);
     setStockModalOpen(true);
+  };
+
+  // Traitement du scan direct pour la recherche
+  const handleBarcodeSearch = (scannedCode: string) => {
+    const code = scannedCode.trim();
+    if (!code) return;
+
+    // Recherche de l'article ayant ce code-barres exact
+    const found = stocks.find((s: StockItem) => s.code_barre && s.code_barre.trim() === code);
+
+    if (found) {
+      setSearchQuery('');
+      handleEditStock(found);
+      setToastMessage({
+        text: `Article trouvé : "${found.produit}"`,
+        type: 'success'
+      });
+      setTimeout(() => setToastMessage(null), 4000);
+    } else {
+      // Message exact demandé : "Article non enregistré"
+      setUnregisteredBarcode(code);
+    }
   };
 
   // --- Components for Layout ---
@@ -329,14 +379,14 @@ function App() {
               </div>
 
               <div className="flex items-center gap-2 w-full md:w-auto">
-                <div className="relative flex-1 md:w-80">
+                <div className="relative flex-1 md:w-72">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
                   <input
                     type="text"
-                    placeholder="Rechercher un produit..."
+                    placeholder="Rechercher un produit ou code..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm transition-all"
+                    className="w-full pl-10 pr-10 py-2.5 bg-white border border-gray-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none shadow-sm transition-all text-sm"
                   />
                   {searchQuery && (
                     <button
@@ -347,6 +397,18 @@ function App() {
                     </button>
                   )}
                 </div>
+
+                {/* Bouton de recherche par scan de code-barres */}
+                <button
+                  type="button"
+                  onClick={() => setIsBarcodeSearchOpen(true)}
+                  className="flex items-center gap-1.5 px-3.5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-sm hover:shadow transition-all text-sm font-semibold active:scale-95 shrink-0"
+                  title="Scanner un code-barres pour rechercher un article"
+                >
+                  <Barcode size={18} />
+                  <span className="hidden sm:inline">Scanner</span>
+                </button>
+
                 {selectedCategoryName && (
                   <button
                     onClick={() => setSelectedCategoryName(null)}
@@ -395,10 +457,19 @@ function App() {
                       style={{ backgroundColor: color }}
                     />
                     <div className="pl-3 mb-4">
-                      <div className="flex justify-between items-start mb-1">
+                      <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-gray-50 text-gray-500 truncate max-w-[70%]">
                            {stock.categorie || 'Sans catégorie'}
                         </span>
+                        {stock.code_barre && (
+                          <span 
+                            className="inline-flex items-center gap-1 text-[11px] font-mono text-gray-600 bg-gray-100 px-2 py-0.5 rounded-full border border-gray-200/60"
+                            title={`Code-barres: ${stock.code_barre}`}
+                          >
+                            <Barcode size={12} className="text-gray-400" />
+                            <span className="truncate max-w-[120px]">{stock.code_barre}</span>
+                          </span>
+                        )}
                       </div>
                       <h3 className="font-bold text-gray-900 text-lg line-clamp-2 leading-tight">
                         {stock.produit}
@@ -444,6 +515,15 @@ function App() {
         </button>
       </main>
 
+      {/* Notification Toast */}
+      {toastMessage && (
+        <div className="fixed top-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 bg-gray-900/95 backdrop-blur text-white text-sm font-semibold rounded-2xl shadow-xl border border-gray-800 animate-in slide-in-from-top-3 duration-200">
+          <CheckCircle2 size={18} className="text-green-400 shrink-0" />
+          <span>{toastMessage.text}</span>
+        </div>
+      )}
+
+      {/* Modal Paramètres Catégories */}
       <Modal
         isOpen={isCategoryModalOpen}
         onClose={() => setCategoryModalOpen(false)}
@@ -454,13 +534,72 @@ function App() {
         />
       </Modal>
 
+      {/* Modal Article (Création / Modification) */}
       <StockItemModal
         isOpen={isStockModalOpen}
-        onClose={() => setStockModalOpen(false)}
+        onClose={() => {
+          setStockModalOpen(false);
+          setPrefilledBarcode(null);
+        }}
         item={editingStock}
         categories={categories}
         currentCategoryName={selectedCategoryName}
+        initialBarcode={prefilledBarcode}
       />
+
+      {/* Scanner caméra pour la Recherche d'article */}
+      <BarcodeScannerModal
+        isOpen={isBarcodeSearchOpen}
+        onClose={() => setIsBarcodeSearchOpen(false)}
+        onScan={handleBarcodeSearch}
+        title="Recherche par code-barres"
+        description="Pointez la caméra vers le code-barres pour trouver l'article"
+      />
+
+      {/* Alerte si "Article non enregistré" */}
+      {unregisteredBarcode && (
+        <Modal
+          isOpen={true}
+          onClose={() => setUnregisteredBarcode(null)}
+          title="Article non enregistré"
+        >
+          <div className="space-y-4">
+            <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3.5">
+              <div className="p-2 bg-amber-100 text-amber-700 rounded-xl shrink-0 mt-0.5">
+                <AlertTriangle size={24} />
+              </div>
+              <div>
+                <h4 className="font-bold text-amber-950 text-base">Article non enregistré</h4>
+                <p className="text-sm text-amber-900 mt-1">
+                  Le code-barres <span className="font-mono font-bold bg-white px-2 py-0.5 rounded-md border border-amber-300 text-gray-900">{unregisteredBarcode}</span> n'est associé à aucun article de votre base.
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-gray-600">
+              Souhaitez-vous créer immédiatement un nouvel article avec ce code-barres ?
+            </p>
+
+            <div className="flex gap-2.5 pt-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setUnregisteredBarcode(null)}
+                className="px-4 py-2.5 text-gray-700 hover:bg-gray-100 rounded-xl font-medium transition-colors text-sm"
+              >
+                Fermer
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCreateWithBarcode(unregisteredBarcode)}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold shadow-md transition-all flex items-center gap-2 text-sm active:scale-95"
+              >
+                <Plus size={18} />
+                <span>Créer cet article</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
