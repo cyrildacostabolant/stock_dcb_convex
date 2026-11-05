@@ -137,7 +137,10 @@ function App() {
       result = result.filter((s: StockItem) => s.produit.toLowerCase().includes(q));
     }
 
-    return result;
+    // Tri par ordre alphabétique (insensible à la casse et aux accents)
+    return [...result].sort((a: StockItem, b: StockItem) => 
+      (a.produit || "").localeCompare(b.produit || "", "fr", { sensitivity: "base" })
+    );
   }, [stocks, selectedCategoryName, searchQuery]);
 
   // Find category object for color display
@@ -464,7 +467,7 @@ function App() {
 
 export default function WrappedApp() {
   return (
-    <HashRouter>
+    <HashRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <App />
     </HashRouter>
   );
